@@ -1,0 +1,16 @@
+# BPMN XML Generator Requirements
+
+# Required for web interface
+flask>=2.3.0
+
+# Claude API
+anthropic>=0.40.0
+
+# Pinecone — vector DB + inference embeddings
+pinecone>=3.0.0
+
+# Optional: For better XML handling
+# lxml>=4.9.0
+
+# For Excel export
+openpyxl>=3.1.0

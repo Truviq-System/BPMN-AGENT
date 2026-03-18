@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BPMN Generator</title>
+    <!-- BPMN.js -->
+    <script src="https://unpkg.com/bpmn-js@14.0.0/dist/bpmn-modeler.development.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/bpmn-js@14.0.0/dist/assets/diagram-js.css">
+    <link rel="stylesheet" href="https://unpkg.com/bpmn-js@14.0.0/dist/assets/bpmn-font/css/bpmn-embedded.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Markdown renderer -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔄 AI powered workflow design and generation</h1>
+            <p>Generate complete BPMN 2.0 XML from process descriptions</p>
+        </div>
+
+        <div class="app-layout">
+
+            <!-- ── Left Sidebar ── -->
+            <aside class="sidebar">
+                <div class="sidebar-title">Navigation</div>
+                <nav class="sidebar-nav">
+                    <div class="nav-item active" data-page="bpmn" id="nav-bpmn">
+                        <span class="nav-icon">⚡</span>
+                        <span class="nav-label">BPMN Generator</span>
+                    </div>
+                    <div class="nav-item locked" data-page="tests" id="nav-tests">
+                        <span class="nav-icon">🧪</span>
+                        <span class="nav-label">Test Cases</span>
+                        <span class="nav-badge" id="nav-test-badge" style="display:none;"></span>
+                        <span class="nav-lock" id="nav-tests-lock">🔒</span>
+                    </div>
+                    <div class="nav-item locked" data-page="springboot" id="nav-springboot">
+                        <span class="nav-icon">☕</span>
+                        <span class="nav-label">Spring Boot</span>
+                        <span class="nav-lock" id="nav-sb-lock">🔒</span>
+                    </div>
+                    <div class="nav-item locked" data-page="react" id="nav-react">
+                        <span class="nav-icon">⚛️</span>
+                        <span class="nav-label">React Frontend</span>
+                        <span class="nav-lock" id="nav-react-lock">🔒</span>
+                    </div>
+                </nav>
+                <div class="sidebar-footer">
+                    <div id="bpmn-ready-status" class="bpmn-ready-status" style="display:none;">
+                        <span class="status-dot"></span>
+                        <span>BPMN Ready</span>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- ── Main Content ── -->
+            <main class="main-content">
+
+                <!-- Page: BPMN Generator -->
+                <div id="page-bpmn" class="page active">
+                    <div class="content">
+                        <div id="error-message"></div>
+                        <div id="success-message"></div>
+
+                        <!-- Application Details -->
+                        <div class="app-details-grid">
+                            <div class="input-section">
+                                <label for="app-name">Application Name:</label>
+                                <input type="text" id="app-name" class="text-input" placeholder="e.g. Loan Approval System">
+                            </div>
+                            <div class="input-section">
+                                <label for="app-industry">Industry:</label>
+                                <select id="app-industry" class="text-input">
+                                    <option value="">-- Select Industry --</option>
+                                    <option value="Banking & Finance">Banking &amp; Finance</option>
+                                    <option value="Insurance">Insurance</option>
+                                    <option value="Healthcare">Healthcare</option>
+                                    <option value="Retail & E-Commerce">Retail &amp; E-Commerce</option>
+                                    <option value="Logistics & Supply Chain">Logistics &amp; Supply Chain</option>
+                                    <option value="Manufacturing">Manufacturing</option>
+                                    <option value="Telecommunications">Telecommunications</option>
+                                    <option value="Government & Public Sector">Government &amp; Public Sector</option>
+                                    <option value="Education">Education</option>
+                                    <option value="Human Resources">Human Resources</option>
+                                    <option value="Real Estate">Real Estate</option>
+                                    <option value="Travel & Hospitality">Travel &amp; Hospitality</option>
+                                    <option value="Technology & SaaS">Technology &amp; SaaS</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div class="input-section" style="grid-column: span 2;">
+                                <label for="app-purpose">Application Purpose:</label>
+                                <input type="text" id="app-purpose" class="text-input"
+                                    placeholder="e.g. Automate loan approval workflow, reduce manual review time">
+                            </div>
+                        </div>
+
+                        <div class="input-section">
+                            <label for="process-description">Process Description:</label>
+                            <textarea id="process-description" placeholder="Describe your business process..."></textarea>
+                        </div>
+
+                        <div class="button-container">
+                            <button id="generate-btn" class="btn btn-primary">
+                                <span>⚡</span> Generate BPMN
+                            </button>
+                            <button id="clear-btn" class="btn btn-secondary">
+                                <span>🗑️</span> Clear
+                            </button>
+                        </div>
+
+                        <div class="loading" id="loading">
+                            <div class="spinner"></div>
+                            <p>Generating BPMN XML...</p>
+                        </div>
+
+                        <div class="single-view" id="single-view" style="display:none;">
+                            <div class="view-header">
+                                <span id="view-title">🎯 BPMN Diagram</span>
+                                <div class="sync-status" id="sync-status" style="display: none;">
+                                    <span class="sync-indicator">🔄</span>
+                                    <span class="sync-text">Syncing...</span>
+                                </div>
+                                <div class="view-toggle">
+                                    <button class="toggle-btn" id="xml-view-btn">XML</button>
+                                    <button class="toggle-btn active" id="diagram-view-btn">Diagram</button>
+                                </div>
+                            </div>
+
+                            <!-- XML Editor View -->
+                            <div class="xml-output" id="xml-output" style="display: none;">
+                                <div class="editor-toolbar">
+                                    <div class="toolbar-title">Edit BPMN XML</div>
+                                    <div class="toolbar-buttons">
+                                        <button class="toolbar-btn format-btn" id="format-btn">🎨 Format</button>
+                                        <button class="toolbar-btn secondary" id="download-btn">💾 Download</button>
+                                        <button class="toolbar-btn" id="copy-btn">📋 Copy</button>
+                                    </div>
+                                </div>
+                                <textarea id="xml-editor" class="xml-editor"
+                                    placeholder="Generated BPMN XML will appear here and will be editable..."
+                                    spellcheck="false"></textarea>
+                            </div>
+
+                            <!-- BPMN Diagram View -->
+                            <div class="diagram-container" id="diagram-container" style="display: block;">
+                                <div class="diagram-header">
+                                    <div class="diagram-title">Interactive BPMN Visualization</div>
+                                    <div class="diagram-buttons">
+                                        <button class="toolbar-btn secondary" id="zoom-in-btn">🔍+</button>
+                                        <button class="toolbar-btn secondary" id="zoom-out-btn">🔍-</button>
+                                        <button class="toolbar-btn secondary" id="zoom-reset-btn">🔄</button>
+                                    </div>
+                                </div>
+                                <div id="canvas"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Page: Test Cases -->
+                <div id="page-tests" class="page">
+                    <div class="content">
+                        <div id="test-section">
+                            <div class="test-panel">
+                                <div class="test-panel-header">
+                                    <div class="test-panel-title">
+                                        <span>🧪 Test Cases</span>
+                                        <span id="test-badge" class="test-badge" style="display:none;"></span>
+                                    </div>
+                                    <div class="test-panel-actions">
+                                        <button id="generate-tests-btn" class="btn btn-test">
+                                            <span>⚡</span> Generate Test Cases
+                                        </button>
+                                        <button id="export-excel-btn" class="btn btn-excel" style="display:none;">
+                                            <span>📊</span> Export to Excel
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div id="test-loading" style="display:none; text-align:center; padding:40px; color:#6c757d;">
+                                    <div class="spinner"></div>
+                                    <p style="margin-top:10px;">Analyzing BPMN and generating test cases...</p>
+                                </div>
+
+                                <div id="test-table-wrapper" style="display:none;">
+                                    <div id="test-stats" class="test-stats"></div>
+                                    <div style="overflow-x:auto;">
+                                        <table id="test-table" class="test-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>TC ID</th>
+                                                    <th>Suite</th>
+                                                    <th>Name</th>
+                                                    <th>Type</th>
+                                                    <th>Description</th>
+                                                    <th>Path</th>
+                                                    <th>Preconditions</th>
+                                                    <th>Steps</th>
+                                                    <th>Expected Result</th>
+                                                    <th>Status</th>
+                                                    <th>Notes</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="test-tbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Page: Spring Boot -->
+                <div id="page-springboot" class="page">
+                    <div class="content">
+                        <div id="springboot-section">
+                            <div class="sb-panel">
+                                <div class="sb-panel-header">
+                                    <div class="sb-panel-title">
+                                        <span>☕ Spring Boot Prompt Generator</span>
+                                    </div>
+                                    <div class="sb-panel-actions">
+                                        <button id="generate-sb-btn" class="btn btn-sb">
+                                            <span>⚡</span> Generate Prompt
+                                        </button>
+                                        <button id="copy-sb-btn" class="btn btn-sb-copy" style="display:none;">
+                                            <span>📋</span> Copy Prompt
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div id="sb-loading" style="display:none; text-align:center; padding:40px; color:#6c757d;">
+                                    <div class="spinner"></div>
+                                    <p style="margin-top:10px;">Analyzing BPMN structure and generating Spring Boot prompt...</p>
+                                    <p style="font-size:0.85rem; margin-top:6px; color:#aaa;">This may take 20–40 seconds — Claude is
+                                        reading every element of your diagram.</p>
+                                </div>
+
+                                <div id="sb-prompt-wrapper" style="display:none;">
+                                    <div class="sb-toolbar">
+                                        <span class="sb-toolbar-label">📄 Copy this prompt and paste it into Cursor / GitHub Copilot /
+                                            JetBrains AI</span>
+                                        <span id="sb-char-count" class="sb-char-count"></span>
+                                    </div>
+                                    <div id="sb-prompt-output" class="sb-prompt-rendered"></div>
+                                    <textarea id="sb-prompt-raw" style="display:none;" readonly></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Page: React Frontend -->
+                <div id="page-react" class="page">
+                    <div class="content">
+                        <div id="react-section">
+                            <div class="sb-panel">
+                                <div class="sb-panel-header">
+                                    <div class="sb-panel-title">
+                                        <span>⚛️ React Frontend Prompt Generator</span>
+                                    </div>
+                                    <div class="sb-panel-actions">
+                                        <button id="generate-react-btn" class="btn btn-react">
+                                            <span>⚡</span> Generate Prompt
+                                        </button>
+                                        <button id="copy-react-btn" class="btn btn-sb-copy" style="display:none;">
+                                            <span>📋</span> Copy Prompt
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div id="react-loading" style="display:none; text-align:center; padding:40px; color:#6c757d;">
+                                    <div class="spinner"></div>
+                                    <p style="margin-top:10px;">Analyzing BPMN structure and generating React prompt...</p>
+                                    <p style="font-size:0.85rem; margin-top:6px; color:#aaa;">Claude is mapping every user task, entity, and API to React pages — this may take 20–40 seconds.</p>
+                                </div>
+
+                                <div id="react-prompt-wrapper" style="display:none;">
+                                    <div class="sb-toolbar">
+                                        <span class="sb-toolbar-label">📄 Copy this prompt and paste it into Cursor / GitHub Copilot / JetBrains AI</span>
+                                        <span id="react-char-count" class="sb-char-count"></span>
+                                    </div>
+                                    <div id="react-prompt-output" class="sb-prompt-rendered"></div>
+                                    <textarea id="react-prompt-raw" style="display:none;" readonly></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <!-- Custom JavaScript -->
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+
+</html>

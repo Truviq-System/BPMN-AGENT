@@ -1,0 +1,342 @@
+def build_prompt(description: str) -> str:
+    return f"""You are an expert BPMN 2.0 modeler. Generate a **complete, valid, and visually correct** BPMN XML process based on the description below. The XML must open in Camunda Modeler and render flawlessly in BPMN.js – **all elements must be connected, and every sequence flow must have a corresponding diagram edge**.
+
+**Process Description:**
+{description}
+
+---
+
+## 🔧 OUTPUT RULES
+- Return **ONLY raw XML**. No markdown, no commentary, no extra text.
+- The XML must be well‑formed and follow the BPMN 2.0 schema exactly.
+
+---
+
+## 🧠 STEP‑BY‑STEP REASONING (follow this mentally before writing XML)
+
+### 1. Parse the description into a structured process
+- Identify if there are multiple **pools** (organisations). If so, create a `<bpmn:collaboration>` with participants.
+- Identify **lanes** inside each pool. List them in order (top to bottom).
+- Identify the **start** (always one) and **end** events (may be multiple).
+- List all **tasks** in order, noting which lane they belong to.
+- Spot any **decision points** (words like "if", "approve/reject", "eligible?", "check") → these become **exclusive gateways**.
+- Spot any **parallel activities** (words like "simultaneously", "at the same time", "concurrently") → these become **parallel gateways**.
+- Spot any **boundary events** (e.g., "timer boundary: 2 days") → attach a boundary event to the corresponding task.
+- Spot any **message flows** between pools (e.g., "message from Client to Bank") → define a message and messageFlow.
+- Spot any **subprocesses** (e.g., "Annual Impact Reporting (repeats yearly)") → create an expanded subprocess with its own internal flow.
+
+### 2. Design the flow
+- Arrange tasks chronologically within each lane.
+- Insert gateways exactly where decisions or parallelism occur.
+- **Every gateway must follow the pattern:**  
+  *Split gateway* → multiple branches → *merge gateway* → single flow.  
+  - Exclusive split: use a single gateway with multiple outgoing flows, then later a merging gateway (or branches can rejoin at an end event).
+  - Parallel split: use a parallel gateway to fork, and another parallel gateway to join before continuing.
+- Ensure **every element (except start/end) has exactly one incoming and one outgoing sequence flow**.  
+  *Count them: number of flows = number of elements - 1 for a linear process, plus extra for gateway branches.*
+
+### 3. Assign task types and names
+- Use clear, action‑oriented names (e.g., "Pull Client Data from CRM").
+- **userTask**: human actions (submit, fill, review, approve, decide).
+- **serviceTask**: automated actions (system, process, validate, calculate, notify, send email, API calls).
+- **businessRuleTask** if explicitly mentioned.
+- For each serviceTask, include:
+  ```xml
+  <bpmn:extensionElements>
+    <zeebe:taskDefinition type="short_descriptive_type" />
+  </bpmn:extensionElements>
+  4. Build the XML structure
+Use the template below. All IDs must follow consistent patterns:
+
+StartEvent: StartEvent_1
+
+Tasks: Task_1, Task_2, … (or descriptive names like Task_PullCRM)
+
+Gateways: Gateway_1, Gateway_2, …
+
+Sequence flows: Flow_1, Flow_2, …
+
+End events: EndEvent_1, EndEvent_2, …
+
+Boundary events: BoundaryTimer_Task1, etc.
+
+Message flows: MessageFlow_1
+
+5. Create the diagram (BPMNDI)
+Every element must have a <bpmndi:BPMNShape> with exact coordinates (see layout rules).
+
+Every sequence flow must have a <bpmndi:BPMNEdge> with waypoints calculated using the attachment formulas.
+
+CRITICAL: The number of edges must equal the number of sequence flows. No flow without an edge, no edge without a flow.
+
+📐 LAYOUT & CONNECTION SPECIFICATIONS
+Lane vertical positions
+If there are N lanes, assign each a y coordinate from top to bottom, starting at 150 and incrementing by 150 each lane:
+
+Lane 1 (top) → y = 150
+
+Lane 2 → y = 300
+
+Lane 3 → y = 450
+
+Lane 4 → y = 600
+
+Lane 5 → y = 750
+
+... (add more with +150 increments)
+
+All elements in a lane share the same y coordinate (the y of the lane). For tasks, use that y; for events, adjust vertically so they are centered within the lane (e.g., if lane y=150, task y=150, start event y=150+? Use formulas below).
+
+Element horizontal positions (within each lane)
+StartEvent: x = 100
+
+Tasks: x = 300, 500, 700, … (increment by 200)
+
+Gateways: x = 400, 600, 800, … (between tasks)
+
+EndEvent: x = last element's x + 200
+
+Element dimensions
+Start/End events: width=36, height=36
+
+Tasks: width=100, height=80
+
+Gateways: width=50, height=50
+
+Boundary events: width=36, height=36 (attached to top-right of task: x = task.x + 70, y = task.y - 20)
+
+Subprocess (expanded): width and height to enclose its internal elements, placed at the appropriate lane.
+
+Waypoint formulas (for BPMNEdge)
+When flow stays within the same lane:
+StartEvent → Task: (start.x+36, start.y+18) → (task.x, task.y+40)
+
+Task → Task: (task.x+100, task.y+40) → (nextTask.x, nextTask.y+40)
+
+Task → Gateway: (task.x+100, task.y+40) → (gateway.x, gateway.y+25)
+
+Gateway → Task: (gateway.x+50, gateway.y+25) → (task.x, task.y+40)
+
+Gateway → Gateway: (gateway.x+50, gateway.y+25) → (nextGateway.x, nextGateway.y+25)
+
+Task → EndEvent: (task.x+100, task.y+40) → (end.x, end.y+18)
+
+Gateway → EndEvent: (gateway.x+50, gateway.y+25) → (end.x, end.y+18)
+
+When flow crosses lanes (e.g., from a gateway in lane 2 to a task in lane 4):
+Use a three‑segment edge to avoid crossing other elements:
+
+From source element's right edge horizontally to a point beyond the lane boundary (e.g., x = source.x+100+50).
+
+Then vertically to the target lane's y + offset (target.y+40 for task, target.y+25 for gateway).
+
+Then horizontally to the target element's left edge.
+
+Example: Gateway at (x=500, y=300) → Task at (x=700, y=600)
+
+text
+<di:waypoint x="550" y="325" />
+<di:waypoint x="650" y="325" />
+<di:waypoint x="650" y="640" />
+<di:waypoint x="700" y="640" />
+Adjust intermediate x values to avoid overlapping other shapes.
+
+Boundary event connections:
+From task to boundary event: no sequence flow needed; boundary event is attached via attachedToRef.
+
+From boundary event to follow‑up element: use a sequence flow from the boundary event to the next element; waypoints: from boundary event (x+18, y+18) to target element's left edge.
+
+Subprocess internal edges:
+Place internal elements inside the subprocess at appropriate coordinates relative to the subprocess bounds. The subprocess shape itself must be large enough to contain them.
+
+✅ VALIDATION CHECKLIST (MUST VERIFY BEFORE OUTPUT)
+XML header <?xml version="1.0" encoding="UTF-8"?> present.
+
+All required namespaces included (bpmn, bpmndi, dc, di, zeebe, modeler).
+
+If pools exist: Collaboration and Participant elements are present, and bpmnElement of diagram plane points to collaboration.
+
+All lanes are defined in a <bpmn:laneSet> and contain flowNodeRef entries for every element in that lane.
+
+Exactly one start event (id="StartEvent_1").
+
+At least one end event (ids unique).
+
+All tasks from description are present, with clear names and correct type (userTask/serviceTask/businessRuleTask).
+
+Every serviceTask contains <bpmn:extensionElements><zeebe:taskDefinition type="..."/></bpmn:extensionElements>.
+
+Every element (except start/end) has exactly one incoming and one outgoing sequenceFlow.
+Count sequenceFlow elements; verify no element is missing a flow.
+
+All sequenceFlow IDs are unique and self‑closing.
+
+If gateways exist:
+
+Split gateways have one incoming, multiple outgoing.
+
+Merge gateways have multiple incoming, one outgoing.
+
+All outgoing flows from an exclusive gateway have distinct name attributes (condition labels).
+
+Parallel gateway splits are eventually merged by another parallel gateway.
+
+Boundary events are attached to their tasks (attachedToRef) and have timer definitions if required.
+
+Message flows (if any) connect correct pools and have message definitions.
+
+Subprocesses are expanded (isExpanded="true" in DI) and contain their own internal flow.
+
+Every element has a corresponding <bpmndi:BPMNShape> with coordinates following layout rules (lane y correct, x spaced).
+
+Every sequenceFlow has a corresponding <bpmndi:BPMNEdge> with waypoints calculated per formulas.
+
+bpmnElement references in shapes/edges exactly match element IDs.
+
+No overlapping elements, no crossing lines (waypoints should avoid other shapes).
+
+The process logic matches the description exactly.
+
+📄 XML TEMPLATE (fill with your elements)
+xml
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+    xmlns:modeler="http://camunda.org/schema/modeler/1.0"
+    exporter="Camunda Modeler"
+    exporterVersion="5.43.1"
+    modeler:executionPlatform="Camunda Cloud"
+    modeler:executionPlatformVersion="8.8.0"
+    targetNamespace="http://bpmn.io/schema/bpmn">
+
+    <!-- COLLABORATION (if multiple pools) -->
+    <bpmn:collaboration id="Collaboration_1">
+        <bpmn:participant id="Participant_Bank" name="US Bank" processRef="Process_1" />
+        <bpmn:participant id="Participant_Client" name="Corporate Client" />
+        <!-- message flows -->
+        <bpmn:messageFlow id="MessageFlow_1" name="termSheetSigned" 
+                          sourceRef="Participant_Client" targetRef="Event_MessageCatch" />
+    </bpmn:collaboration>
+
+    <bpmn:process id="Process_1" isExecutable="false">
+        <!-- LANES (order top to bottom) -->
+        <bpmn:laneSet>
+            <bpmn:lane id="Lane_RM" name="Relationship Manager">
+                <bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef>
+                <bpmn:flowNodeRef>Task_PullCRM</bpmn:flowNodeRef>
+                <!-- ... other elements in this lane -->
+            </bpmn:lane>
+            <bpmn:lane id="Lane_ESG" name="ESG Analyst">
+                <bpmn:flowNodeRef>Task_ESGEligibility</bpmn:flowNodeRef>
+                <!-- ... -->
+            </bpmn:lane>
+            <!-- additional lanes -->
+        </bpmn:laneSet>
+
+        <!-- FLOW ELEMENTS -->
+        <bpmn:startEvent id="StartEvent_1" name="Application Received" />
+
+        <bpmn:serviceTask id="Task_PullCRM" name="Pull Client Data from CRM">
+            <bpmn:extensionElements>
+                <zeebe:taskDefinition type="pull-crm-data" />
+            </bpmn:extensionElements>
+        </bpmn:serviceTask>
+
+        <bpmn:userTask id="Task_RMReview" name="RM Qualification Review">
+            <bpmn:extensionElements>
+                <zeebe:assignmentDefinition candidateGroups="relationship-manager" />
+            </bpmn:extensionElements>
+        </bpmn:userTask>
+
+        <!-- gateways -->
+        <bpmn:exclusiveGateway id="Gateway_ESGEligible" name="ESG Eligible?" default="Flow_ESGYes" />
+
+        <!-- boundary event example -->
+        <bpmn:boundaryEvent id="BoundaryTimer_RMReview" attachedToRef="Task_RMReview">
+            <bpmn:timerEventDefinition>
+                <bpmn:timeDuration>P2D</bpmn:timeDuration>
+            </bpmn:timerEventDefinition>
+        </bpmn:boundaryEvent>
+
+        <!-- subprocess example -->
+        <bpmn:subProcess id="SubProcess_ImpactReporting" name="Annual Impact Reporting">
+            <bpmn:laneSet>...</bpmn:laneSet>
+            <!-- internal flow -->
+            <bpmn:startEvent id="SubStart" ... />
+            ...
+        </bpmn:subProcess>
+
+        <!-- ... other elements ... -->
+
+        <bpmn:endEvent id="EndEvent_1" name="Facility Funded & Active" />
+        <bpmn:endEvent id="EndEvent_2" name="Facility Matured" />
+
+        <!-- SEQUENCE FLOWS -->
+        <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_PullCRM" />
+        <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_PullCRM" targetRef="Task_RMReview" />
+        <!-- ... more flows ... -->
+    </bpmn:process>
+
+    <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+        <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_1">
+            <!-- PARTICIPANT (pool) SHAPES -->
+            <bpmndi:BPMNShape id="Participant_Bank_di" bpmnElement="Participant_Bank" isHorizontal="true">
+                <dc:Bounds x="50" y="50" width="3500" height="800" />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Participant_Client_di" bpmnElement="Participant_Client" isHorizontal="true" isExpanded="false">
+                <dc:Bounds x="50" y="900" width="300" height="60" />
+            </bpmndi:BPMNShape>
+
+            <!-- LANE SHAPES (inside the bank pool) -->
+            <bpmndi:BPMNShape id="Lane_RM_di" bpmnElement="Lane_RM">
+                <dc:Bounds x="50" y="50" width="3500" height="150" />
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Lane_ESG_di" bpmnElement="Lane_ESG">
+                <dc:Bounds x="50" y="200" width="3500" height="150" />
+            </bpmndi:BPMNShape>
+            <!-- ... more lanes ... -->
+
+            <!-- SHAPES for flow elements (placed at correct lane y) -->
+            <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+                <dc:Bounds x="100" y="110" width="36" height="36" />  <!-- y = lane_RM.y + offset -->
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape id="Task_PullCRM_di" bpmnElement="Task_PullCRM">
+                <dc:Bounds x="300" y="90" width="100" height="80" />   <!-- y = lane_RM.y -->
+            </bpmndi:BPMNShape>
+            <!-- ... -->
+
+            <!-- BOUNDARY EVENT SHAPE (attached to task) -->
+            <bpmndi:BPMNShape id="BoundaryTimer_RMReview_di" bpmnElement="BoundaryTimer_RMReview">
+                <dc:Bounds x="460" y="50" width="36" height="36" />
+            </bpmndi:BPMNShape>
+
+            <!-- SUBPROCESS SHAPE -->
+            <bpmndi:BPMNShape id="SubProcess_ImpactReporting_di" bpmnElement="SubProcess_ImpactReporting" isExpanded="true">
+                <dc:Bounds x="2820" y="180" width="400" height="300" />
+            </bpmndi:BPMNShape>
+
+            <!-- EDGES for all sequence flows -->
+            <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+                <di:waypoint x="136" y="128" />
+                <di:waypoint x="300" y="130" />
+            </bpmndi:BPMNEdge>
+            <!-- ... more edges ... -->
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+⚠️ CRITICAL REMINDERS
+
+Every sequence flow must appear twice: once inside <bpmn:process> and once as <bpmndi:BPMNEdge>.
+
+Every shape must have coordinates consistent with its lane and the spacing rules.
+
+For flows crossing lanes, use three‑segment waypoints to avoid clutter.
+
+If the description contains many steps, increment x coordinates by 180–200 for each new element.
+
+Now, generate the XML. Follow the reasoning steps strictly and verify using the checklist before output.
+"""
