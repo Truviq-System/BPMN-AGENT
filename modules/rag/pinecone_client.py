@@ -28,8 +28,6 @@ def _get_index():
         return _index
 
     pc = _client()
-    existing = [i["name"] for i in pc.list_indexes()]
-
     print(f"[Pinecone] Using existing index '{INDEX_NAME}'")
 
     _index = pc.Index(INDEX_NAME)

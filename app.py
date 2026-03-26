@@ -1,12 +1,14 @@
+# Load environment variables first - before any other imports
+from dotenv import load_dotenv
 from flask import Flask
 import os
-
 from modules.bpmn_generator import bpmn_bp
 from modules.test_cases import tests_bp
 from modules.springboot import springboot_bp
 from modules.react_prompt import react_bp
 from modules.rag.routes import rag_bp
 
+load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "bpmn-agent-secret")
 

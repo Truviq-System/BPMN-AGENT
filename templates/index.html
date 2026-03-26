@@ -18,14 +18,25 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔄 AI powered workflow design and generation</h1>
-            <p>Generate complete BPMN 2.0 XML from process descriptions</p>
+            <div class="header-content">
+                <div class="header-brand">
+                    <div class="brand-icon">🔄</div>
+                    <div class="brand-text">
+                        <h1>AI-Powered Workflow Designer</h1>
+                        <p>Generate complete BPMN 2.0 diagrams, test cases, and full-stack code from natural language</p>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="app-layout">
 
             <!-- ── Left Sidebar ── -->
             <aside class="sidebar">
+                <div class="sidebar-brand">
+                    <div class="sidebar-logo">🔄</div>
+                    <div class="sidebar-brand-name">BPMN Agent</div>
+                </div>
                 <div class="sidebar-title">Navigation</div>
                 <nav class="sidebar-nav">
                     <div class="nav-item active" data-page="bpmn" id="nav-bpmn">
@@ -66,6 +77,14 @@
                         <div id="error-message"></div>
                         <div id="success-message"></div>
 
+                        <!-- Form Card -->
+                        <div class="form-card">
+                        <div class="form-card-header">
+                            <span class="step-badge">Step 1</span>
+                            <span class="form-card-title">Configure Your Workflow</span>
+                        </div>
+                        <div class="form-card-body">
+
                         <!-- Application Details -->
                         <div class="app-details-grid">
                             <div class="input-section">
@@ -80,15 +99,12 @@
                                     <option value="Insurance">Insurance</option>
                                     <option value="Healthcare">Healthcare</option>
                                     <option value="Retail & E-Commerce">Retail &amp; E-Commerce</option>
-                                    <option value="Logistics & Supply Chain">Logistics &amp; Supply Chain</option>
                                     <option value="Manufacturing">Manufacturing</option>
                                     <option value="Telecommunications">Telecommunications</option>
                                     <option value="Government & Public Sector">Government &amp; Public Sector</option>
                                     <option value="Education">Education</option>
-                                    <option value="Human Resources">Human Resources</option>
                                     <option value="Real Estate">Real Estate</option>
                                     <option value="Travel & Hospitality">Travel &amp; Hospitality</option>
-                                    <option value="Technology & SaaS">Technology &amp; SaaS</option>
                                     <option value="Other">Other</option>
                                 </select>
                             </div>
@@ -103,6 +119,9 @@
                             <label for="process-description">Process Description:</label>
                             <textarea id="process-description" placeholder="Describe your business process..."></textarea>
                         </div>
+
+                        </div><!-- /form-card-body -->
+                        </div><!-- /form-card -->
 
                         <div class="button-container">
                             <button id="generate-btn" class="btn btn-primary">

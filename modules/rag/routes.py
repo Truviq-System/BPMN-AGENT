@@ -73,11 +73,7 @@ def index_documents():
 
 @rag_bp.route('/search', methods=['POST'])
 def search():
-    """
-    Ad-hoc similarity search — useful for testing retrieval quality.
 
-    Body: { "query": "...", "doc_type": "bpmn|test|springboot", "top_k": 4 }
-    """
     data     = request.get_json() or {}
     query    = data.get("query", "").strip()
     doc_type = data.get("doc_type", "bpmn")

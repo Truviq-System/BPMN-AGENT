@@ -1,110 +1,116 @@
 from .pinecone_client import query_similar
 
-SCORE_THRESHOLD = 0.68   # minimum cosine similarity to rectly.
-# For test / springboot: input is raw XML which embeds poorly, so use a fixed
-# intent-based query that maps well to the stored best-practice documents.include a hit
+SCORE_THRESHOLD = 0.65
 
-# ── Section headers injected into the prompt per context type ─────────────────
+# ── Section headers ──────────────────────────────────────────────────────────
 _SECTION_HEADERS = {
-    "bpmn":        "### Retrieved BPMN Patterns (use as domain reference)",
-    "test":        "### Retrieved Test Patterns (use as QA best-practice reference)",
-    "springboot":  "### Retrieved Implementation Patterns (use as architecture reference)",
-    "react":       "### Retrieved Frontend Patterns (use as React/UI best-practice reference)",
+    "bpmn":        "### Retrieved BPMN Patterns (Authoritative Reference)",
+    "test":        "### Retrieved Test Patterns (QA Best Practices)",
+    "springboot":  "### Retrieved Implementation Patterns (Official Architecture)",
+    "react":       "### Retrieved Frontend Patterns (UI Best Practices)",
 }
 
-# ── Semantic queries per context type ─────────────────────────────────────────
-# For bpmn: user description is already semantic — use it di
+# ── Improved semantic queries (documentation aligned) ─────────────────────────
 _SEMANTIC_QUERIES = {
-    "test":       "Camunda BPMN process test case generation flow testing validation best practices",
-    "springboot": "Camunda 8 Spring Boot implementation job worker Zeebe client configuration setup",
-    "react":      "React frontend Camunda process user task forms CRUD dashboard TanStack Query Axios REST API integration",
+    "test":       "Camunda BPMN testing strategy unit integration testing Zeebe process validation best practices",
+    "springboot": "Camunda 8 official documentation Zeebe job worker Spring Boot configuration best practices",
+    "react":      "React frontend best practices workflow forms validation API integration TanStack Query patterns",
 }
 
+# ── Re-ranking (similarity + authority) ───────────────────────────────────────
+def rerank_hits(hits: list[dict]) -> list[dict]:
+    for h in hits:
+        similarity = h.get("score", 0)
+        authority  = h.get("confidence", 0.5)
+
+        # Weighted scoring (tune if needed)
+        h["final_score"] = (0.6 * similarity) + (0.4 * authority)
+
+    return sorted(hits, key=lambda x: x["final_score"], reverse=True)
 
 # ── Context formatter ─────────────────────────────────────────────────────────
-
 def _format_context(hits: list[dict], context_type: str) -> str:
-    """Format Pinecone hits into a prompt-friendly block."""
     if not hits:
         return ""
 
     header = _SECTION_HEADERS.get(context_type, "### Retrieved Patterns")
-    lines  = [header, ""]
+
+    lines = [
+        header,
+        "Use ONLY these patterns as authoritative references. Do NOT invent alternatives.",
+        ""
+    ]
 
     for i, h in enumerate(hits, 1):
         lines.append(
-            f"**{i}. {h['pattern_name']}**  "
-            f"(domain: {h['domain']}, relevance: {h['score']})"
+            f"**{i}. {h.get('pattern_name','Pattern')}** "
+            f"(source: {h.get('source','unknown')}, score: {round(h.get('final_score',0),2)})"
         )
-        lines.append(f"_{h['description']}_")
+
+        if h.get("description"):
+            lines.append(f"_{h['description']}_")
+
         if h.get("content"):
             lines.append(h["content"])
+
         if h.get("tags"):
             lines.append(f"Tags: {h['tags']}")
-        lines.append("")   # blank line between items
+
+        lines.append("")
 
     return "\n".join(lines)
 
-
-# ── Main entry point ──────────────────────────────────────────────────────────
-
+# ── Main RAG pipeline ─────────────────────────────────────────────────────────
 def run(content: str, context_type: str = "bpmn") -> tuple[str, dict]:
-    """
-    Run the RAG pipeline — always retrieves from Pinecone on every query.
-
-    Parameters
-    ----------
-    content      : str — user description (for bpmn) OR BPMN XML (for test/springboot)
-    context_type : str — "bpmn" | "test" | "springboot"
-
-    Returns
-    -------
-    context : str   — augmentation block to inject into the generation prompt
-    meta    : dict  — pipeline metadata for logging / frontend display
-    """
     meta = {
         "rag_used":     False,
         "context_type": context_type,
-        "reasoning":    "Always retrieve best-practice material.",
+        "reasoning":    "Retrieve authoritative best-practice documentation.",
         "chunks_found": 0,
         "chunks_used":  0,
         "search_query": None,
     }
 
-    # For test/springboot the input is BPMN XML — use a fixed semantic intent
-    # query so the embedding model retrieves the most relevant best-practice
-    # documents. For bpmn the user's plain description is used directly.
+    # ── Step 1: Query selection ──────────────────────────────────────────────
     query_text = _SEMANTIC_QUERIES.get(context_type, content)
     meta["search_query"] = query_text
 
-    # ── Step 1: Query Pinecone via semantic embeddings — always runs ──────────
     try:
-        print(f"[RAG/{context_type}] Querying Pinecone (doc_type={context_type}): "
-              f"'{query_text[:120]}'")
+        print(f"[RAG/{context_type}] Querying Pinecone: {query_text[:100]}")
+
         hits = query_similar(
             query_text,
             doc_type=context_type,
-            top_k=5,
+            top_k=8,
         )
+
         meta["chunks_found"] = len(hits)
 
-        hits = [h for h in hits if h["score"] >= SCORE_THRESHOLD]
+        # ── Step 2: Threshold filter ─────────────────────────────────────────
+        hits = [h for h in hits if h.get("score", 0) >= SCORE_THRESHOLD]
+
+        # ── Step 3: Re-ranking ───────────────────────────────────────────────
+        hits = rerank_hits(hits)
+
+        # Keep top results only (token control)
+        hits = hits[:3]
+
         meta["chunks_used"] = len(hits)
 
-        print(f"[RAG/{context_type}] {meta['chunks_found']} hits → "
-              f"{meta['chunks_used']} above threshold {SCORE_THRESHOLD}")
+        print(f"[RAG/{context_type}] {meta['chunks_found']} → {meta['chunks_used']} after filtering")
 
         if not hits:
-            print(f"[RAG/{context_type}] No patterns above threshold — generating directly.")
+            print(f"[RAG/{context_type}] No strong matches — fallback to generation.")
             return "", meta
 
     except Exception as e:
-        print(f"[RAG/{context_type}] Pinecone query failed: {e} — fallback to direct.")
+        print(f"[RAG/{context_type}] Error: {e}")
         meta["reasoning"] += f" (retrieval failed: {e})"
         return "", meta
 
-    # ── Step 2: Format context block ──────────────────────────────────────────
+    # ── Step 5: Format context ──────────────────────────────────────────────
     context = _format_context(hits, context_type)
     meta["rag_used"] = True
-    print(f"[RAG/{context_type}] Context built ({len(context)} chars).")
+
+    print(f"[RAG/{context_type}] Context ready ({len(context)} chars)")
     return context, meta

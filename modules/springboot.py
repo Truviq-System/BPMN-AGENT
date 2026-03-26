@@ -42,7 +42,23 @@ For each serviceTask extract:
 - id, name
 - zeebe:taskDefinition type
 - lane
-Generate one @JobWorker per task type with variable handling.
+- input/output variables (zeebe:ioMapping if present)
+
+Generate one fully implemented @JobWorker class per task type. Each worker must:
+1. Use @JobWorker(type = "<task-type>") annotation
+2. Accept ActivatedJob job parameter and JobClient client parameter
+3. Read all relevant input variables from job.getVariablesAsMap()
+4. Include COMPLETE basic business logic — do NOT leave methods as stubs or TODOs.
+   - For data-processing tasks: include simple data transformation/validation logic
+   - For notification tasks: include a log statement simulating email/SMS send
+   - For approval tasks: include simple rule-based auto-approve/reject logic
+   - For calculation tasks: include the actual calculation
+   - For database tasks: call the appropriate repository method
+5. Set output variables using client.newCompleteCommand(job.getKey()).variables(outputMap).send().join()
+6. Handle exceptions with client.newThrowErrorCommand(job.getKey()) for business errors
+7. Add @Slf4j and log entry/exit with variable values
+
+Each worker must be a complete, runnable class — not a skeleton.
 
 ## USER TASK APIs
 For each userTask extract id and name.
@@ -75,11 +91,11 @@ spring-boot-starter-test
 
 ## CONFIG (application.properties)
 Include:
-zeebe.client.*  
-spring.datasource.* (PostgreSQL)  
-spring.jpa.*  
-server.port  
-logging.level.*  
+zeebe.client.*
+spring.datasource.* (PostgreSQL)
+spring.jpa.*
+server.port=8081
+logging.level.*
 springdoc.swagger-ui.path
 
 ## REST CONTROLLERS
@@ -135,12 +151,18 @@ src/main/resources/
  data.sql
 
 ## ADDITIONAL
-Java 17  
-Swagger annotations (@Operation)  
-@Valid request bodies  
-Lombok annotations  
-Startup runner printing registered Zeebe workers  
+Java 17
+Swagger annotations (@Operation)
+@Valid request bodies
+Lombok annotations
+Startup runner printing registered Zeebe workers
 README listing all APIs
+
+CRITICAL RULES — follow these strictly:
+- Every @JobWorker method body must contain real, working code — NO "// TODO", NO empty methods, NO placeholder comments
+- If business logic is unknown, implement a sensible default (e.g., validation worker checks for null/empty fields, notification worker logs the message, calculation worker computes based on variable names)
+- All workers must call either completeCommand or throwErrorCommand — never leave the job hanging
+- Include simple if/else or switch logic where a gateway decision depends on worker output
 
 Generate the final IDE prompt using exact values extracted from the BPMN XML.
 """
