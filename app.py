@@ -3,7 +3,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from flask import Flask, request, make_response
-from flask_cors import CORS
 import os
 from modules.bpmn_generator import bpmn_bp
 from modules.test_cases import tests_bp
@@ -12,7 +11,6 @@ from modules.react_prompt import react_bp
 from modules.rag.routes import rag_bp
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "bpmn-agent-secret")
-CORS(app)
 
 @app.before_request
 def handle_preflight():
