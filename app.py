@@ -14,24 +14,21 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "bpmn-agent-secret")
 CORS(app)
 
-CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-}
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        response.status_code = 200
+        return response
 
 @app.after_request
 def add_cors_headers(response):
-    for key, value in CORS_HEADERS.items():
-        response.headers[key] = value
-    return response
-
-@app.route("/<path:path>", methods=["OPTIONS"])
-@app.route("/", methods=["OPTIONS"])
-def handle_options(path=""):
-    response = make_response("", 204)
-    for key, value in CORS_HEADERS.items():
-        response.headers[key] = value
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
     return response
 
 app.register_blueprint(bpmn_bp)
