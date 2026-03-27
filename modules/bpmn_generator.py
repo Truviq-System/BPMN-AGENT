@@ -200,31 +200,108 @@ SUBPROCESS
 MESSAGE FLOWS
 - Use <bpmn:messageFlow> between participants
 
-LAYOUT
-Lane height: 150  
-Lane y positions: 150, 300, 450...
+LAYOUT — COORDINATES (read carefully, apply exactly)
 
-Element placement inside lanes:
-StartEvent → x=100  
-Tasks → x=300,500,700... (100x80)  
-Gateways → x=400,600,800... (50x50)  
-EndEvent → last_x+200  
+COLUMN SPACING SYSTEM
+Assign every element a column index (col) starting at 0, incrementing left-to-right:
+  col 0 → StartEvent      x = 150
+  col 1 → first Task/GW   x = 300
+  col 2 → next Task/GW    x = 500
+  col 3 → next Task/GW    x = 700
+  ...each col adds 200px
+  EndEvent → x = last_col_x + 250
 
-Edge waypoints:
-Start→Task: (start.x+36,start.y+18) → (task.x,task.y+40)
-Task→Task: (task.x+100,task.y+40) → (next.x,next.y+40)
-Task→Gateway: (task.x+100,task.y+40) → (gw.x,gw.y+25)
-Gateway→Task: (gw.x+50,gw.y+25) → (task.x,task.y+40)
-Task→End: (task.x+100,task.y+40) → (end.x,end.y+18)
+Never place two elements at the same x unless they are in DIFFERENT lanes on a parallel branch.
+Parallel branches that run simultaneously share the same column index but sit in different lanes.
+
+ELEMENT SIZES
+  startEvent / endEvent:   width=36,  height=36
+  intermediateEvent:       width=36,  height=36
+  userTask / serviceTask:  width=100, height=80
+  exclusiveGateway:        width=50,  height=50
+  parallelGateway:         width=50,  height=50
+  subProcess:              width=350, height=200
+
+LANE / POOL DIMENSIONS
+  Pool header width: 30
+  Lane height: 160  (use 200 if the lane has boundary events or sub-processes)
+  Lane y positions (inside the pool, top-to-bottom):
+    Lane 1: y=0
+    Lane 2: y=160
+    Lane 3: y=320
+    Lane 4: y=480
+    ...
+  Pool y offset from canvas top: 80
+  So absolute y of lane N = 80 + (N-1)*160
+
+ELEMENT VERTICAL CENTERING (per lane)
+Place every element at the vertical center of its lane:
+  element_center_y = lane_absolute_y + (lane_height / 2)
+  startEvent/endEvent cy = element_center_y  →  y = cy - 18
+  task cy = element_center_y                 →  y = cy - 40
+  gateway cy = element_center_y             →  y = cy - 25
+
+SEQUENCE FLOW WAYPOINTS (use exact center points of source and target)
+
+Define center points first:
+  startEvent center:  (x+18, y+18)
+  endEvent center:    (x+18, y+18)
+  task center:        (x+50, y+40)
+  task left edge:     (x,    y+40)
+  task right edge:    (x+100,y+40)
+  gateway center:     (x+25, y+25)
+  gateway left edge:  (x,    y+25)
+  gateway right edge: (x+50, y+25)
+  gateway top:        (x+25, y)
+  gateway bottom:     (x+25, y+50)
+
+CONNECTION RULES (same lane — horizontal flow)
+  Start → Task:       waypoints: [start.rightCenter → task.leftEdge]
+  Task → Task:        waypoints: [src.rightEdge → tgt.leftEdge]
+  Task → Gateway:     waypoints: [task.rightEdge → gw.leftEdge]
+  Gateway → Task:     waypoints: [gw.rightEdge → tgt.leftEdge]
+  Gateway → End:      waypoints: [gw.rightEdge → end.leftCenter]
+  Task → End:         waypoints: [task.rightEdge → end.leftCenter]
+
+CONNECTION RULES (cross-lane — vertical + horizontal)
+  Route via a mid-point to avoid overlaps:
+    Step 1: exit source right edge (src.rightEdge)
+    Step 2: add intermediate waypoint at (src.rightEdge.x + 20, tgt.leftEdge.y)  ← drops/rises to target lane
+    Step 3: enter target left edge (tgt.leftEdge)
+  For gateway cross-lane exit from bottom: use gateway.bottom as first waypoint
+  For gateway cross-lane exit from top:    use gateway.top as first waypoint
+
+EXCLUSIVE GATEWAY BRANCH ROUTING
+  Default/main branch:  exits gateway RIGHT  → use gw.rightEdge
+  Alternate branch(es): exit gateway BOTTOM or TOP depending on target lane direction
+    - Target is in a lower lane → exit BOTTOM: (gw.x+25, gw.y+50)
+    - Target is in a higher lane → exit TOP:   (gw.x+25, gw.y)
+    - Then travel horizontally to target column before entering target element
+
+PARALLEL GATEWAY RULES
+  Split: all outgoing flows exit from RIGHT if same-lane, BOTTOM/TOP if cross-lane
+  Merge: all incoming flows enter from LEFT if same-lane, TOP/BOTTOM if cross-lane
+
+BOUNDARY EVENT PLACEMENT
+  Attach to host task bottom edge:
+    boundary.x = task.x + (task.width/2) - 18   (centered on task)
+    boundary.y = task.y + task.height - 18
+  Sequence flow from boundary: exit BOTTOM → (boundary.x+18, boundary.y+36)
+
+SUBPROCESS BPMNDI
+  isExpanded="true"
+  Interior elements use absolute coordinates (not relative)
+  Ensure interior elements fit within subprocess bounds
 
 VALIDATION
 - Proper BPMN namespaces (bpmn,bpmndi,dc,di,zeebe,modeler)
-- All sequenceFlows have BPMNEdge
-- All elements have BPMNShape
+- All sequenceFlows have BPMNEdge with correct waypoints
+- All elements have BPMNShape with correct x,y,width,height
+- No two shapes overlap (check x ranges: elements at same y must have non-overlapping x ranges)
 - IDs unique
 - bpmnElement references valid
+- Every waypoint coordinate must be derived from the formulas above — do not guess or reuse coordinates from other elements
 """
-
 
 # ─────────────────────────────────────────────
 # ROUTES
