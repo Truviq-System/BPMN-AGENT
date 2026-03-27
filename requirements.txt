@@ -3,6 +3,9 @@
 # Required for web interface
 flask>=2.3.0
 
+# Environment variable loading
+python-dotenv>=1.0.0
+
 # Claude API
 anthropic>=0.40.0
 
