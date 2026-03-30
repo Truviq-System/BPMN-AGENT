@@ -3,80 +3,169 @@ import re
 from flask import Blueprint, request, jsonify
 
 from .claude_client import call_claude
-from .session_store import get_xml, strip_bpmndi
+from .session_store import get_xml
 from .rag.pipeline import run as rag_run
 
 springboot_bp = Blueprint("springboot", __name__)
 
 # ─────────────────────────────────────────────
-# STATIC SYSTEM PROMPT  (cached after first call)
-# ─────────────────────────────────────────────
-_SB_SYSTEM = """Senior Java architect for Camunda 8 (Zeebe) + Spring Boot 3.
-
-Analyze the BPMN XML, then produce ONE copy-paste IDE prompt that builds a full production-ready Spring Boot application.
-Output ONLY the IDE prompt text — no explanation, no markdown wrapper.
-Prompt must begin exactly: "Generate a complete, production-ready Spring Boot 3 application for a Camunda 8 (Zeebe) BPM process with the following exact specifications:"
-Prompt must be fully self-contained (do not reference the XML by name; embed all extracted values directly).
-
-The IDE prompt must instruct generation of:
-
-PROCESS INFO: extract process id/name, collaboration participants, lanes, lane→task mapping.
-
-SERVICE TASK WORKERS — for each serviceTask (id, name, zeebe:taskDefinition type, lane, ioMapping variables):
-One complete @JobWorker class per type:
-1. @JobWorker(type="<type>") with ActivatedJob + JobClient params
-2. Read inputs: job.getVariablesAsMap()
-3. FULL business logic — NO TODOs, NO stubs, NO empty methods.
-   validation→null/empty checks; notification→log-simulated send; approval→rule-based logic; calculation→actual compute; database→repository call
-4. Output: client.newCompleteCommand(job.getKey()).variables(outputMap).send().join()
-5. Business errors: client.newThrowErrorCommand
-6. @Slf4j with entry/exit logging including variable values
-Every worker must be a complete, runnable class.
-
-USER TASK APIS — per userTask: REST endpoints to fetch and complete the task.
-
-GATEWAYS — map exclusiveGateway conditions to if/else logic in relevant workers.
-
-EVENTS — boundary event handlers (timer/error).
-
-DATABASE — infer entities from tasks/lanes/variables:
-JPA @Entity + CREATE TABLE DDL + Spring Data repositories.
-
-POM.XML dependencies: spring-boot-starter-web, spring-boot-starter-data-jpa, spring-boot-starter-validation, io.camunda:spring-zeebe-starter, io.camunda:zeebe-client-java, postgresql, lombok, springdoc-openapi-starter-webmvc-ui, mapstruct, spring-boot-starter-test
-
-APPLICATION.PROPERTIES: zeebe.client.*, spring.datasource.*(PostgreSQL), spring.jpa.*, server.port=8081, logging.level.*, springdoc.swagger-ui.path
-
-CONTROLLERS:
-ProcessController: POST /api/process/start · GET /api/process/instances · GET /api/process/instances/{key} · DELETE /api/process/instances/{key}
-TaskController: GET /api/tasks · GET /api/tasks/{id} · POST /api/tasks/{id}/complete · GET /api/tasks/process/{key}
-Entity Controllers: full CRUD per entity.
-
-SERVICES: ProcessService (ZeebeClient — start/cancel/query), TaskService, entity services (@Transactional).
-
-DTOs: StartProcessRequest, CompleteTaskRequest, ProcessInstanceResponse, TaskResponse, entity request/response DTOs.
-
-EXCEPTION HANDLER (@ControllerAdvice): 404 ResourceNotFound, 400 Validation, 502 ZeebeClient, 500 Generic.
-
-PROJECT STRUCTURE:
-src/main/java/com/example/{process}/ → controller/, service/, repository/, model/entity/, model/dto/, worker/, config/, exception/
-src/main/resources/ → application.properties, schema.sql, data.sql
-
-Java 17. @Valid bodies. @Operation Swagger. Lombok. Startup runner listing registered workers. README with all APIs.
-
-CRITICAL: every @JobWorker body has real working code; all workers call completeCommand or throwErrorCommand; include gateway if/else where decisions depend on worker output."""
-
-
-# ─────────────────────────────────────────────
-# PROMPT BUILDER  (user message — dynamic only)
+# PROMPT BUILDER
 # ─────────────────────────────────────────────
 
-def build_springboot_prompt(xml: str, rag_context: str = "") -> str:
-    parts = []
-    if rag_context:
-        parts.append(f"REFERENCE:\n{rag_context}")
-    # Strip BPMNDi (visual coords) — irrelevant for code generation, saves ~40-60% of XML tokens.
-    parts.append(f"BPMN XML:\n{strip_bpmndi(xml)}")
-    return "\n\n".join(parts)
+def build_springboot_prompt_generator(xml: str, rag_context: str = "") -> str:
+    context = f"\nBEST PRACTICES:\n{rag_context}\n" if rag_context else ""
+
+    return f"""You are a senior Java architect specializing in Camunda 8 (Zeebe) and Spring Boot 3.{context}
+
+Analyze the BPMN 2.0 XML and generate ONE copy-paste prompt for an AI IDE (Cursor, Copilot, JetBrains AI) that builds a full production-ready Spring Boot application.
+
+BPMN XML:
+{xml}
+
+OUTPUT RULES
+- Output ONLY the IDE prompt text
+- No explanations or markdown
+- Prompt must start with:
+  "Generate a complete, production-ready Spring Boot 3 application for a Camunda 8 (Zeebe) BPM process with the following exact specifications:"
+- Prompt must be fully self-contained (do not require the XML)
+
+The IDE prompt must instruct generation of the following:
+
+## PROCESS INFO
+Extract from XML:
+- process id and name
+- collaboration participants
+- lanes and which tasks belong to each lane
+
+## SERVICE TASK WORKERS
+For each serviceTask extract:
+- id, name
+- zeebe:taskDefinition type
+- lane
+- input/output variables (zeebe:ioMapping if present)
+
+Generate one fully implemented @JobWorker class per task type. Each worker must:
+1. Use @JobWorker(type = "<task-type>") annotation
+2. Accept ActivatedJob job parameter and JobClient client parameter
+3. Read all relevant input variables from job.getVariablesAsMap()
+4. Include COMPLETE basic business logic — do NOT leave methods as stubs or TODOs.
+   - For data-processing tasks: include simple data transformation/validation logic
+   - For notification tasks: include a log statement simulating email/SMS send
+   - For approval tasks: include simple rule-based auto-approve/reject logic
+   - For calculation tasks: include the actual calculation
+   - For database tasks: call the appropriate repository method
+5. Set output variables using client.newCompleteCommand(job.getKey()).variables(outputMap).send().join()
+6. Handle exceptions with client.newThrowErrorCommand(job.getKey()) for business errors
+7. Add @Slf4j and log entry/exit with variable values
+
+Each worker must be a complete, runnable class — not a skeleton.
+
+## USER TASK APIs
+For each userTask extract id and name.
+Generate REST endpoints to fetch and complete tasks.
+
+## GATEWAYS
+Extract exclusiveGateway conditions and map them to if/else logic.
+
+## EVENTS
+Extract boundary events (timer/error) and generate handlers.
+
+## DATABASE
+Infer entities from tasks, lanes, and variables.
+Generate:
+- JPA @Entity classes
+- CREATE TABLE DDL
+- Spring Data repositories
+
+## DEPENDENCIES (pom.xml)
+spring-boot-starter-web
+spring-boot-starter-data-jpa
+spring-boot-starter-validation
+io.camunda:spring-zeebe-starter
+io.camunda:zeebe-client-java
+postgresql
+lombok
+springdoc-openapi-starter-webmvc-ui
+mapstruct
+spring-boot-starter-test
+
+## CONFIG (application.properties)
+Include:
+zeebe.client.*
+spring.datasource.* (PostgreSQL)
+spring.jpa.*
+server.port=8081
+logging.level.*
+springdoc.swagger-ui.path
+
+## REST CONTROLLERS
+
+ProcessController
+POST   /api/process/start
+GET    /api/process/instances
+GET    /api/process/instances/{{key}}
+DELETE /api/process/instances/{{key}}
+
+TaskController
+GET    /api/tasks
+GET    /api/tasks/{{taskId}}
+POST   /api/tasks/{{taskId}}/complete
+GET    /api/tasks/process/{{instanceKey}}
+
+Entity Controllers
+Full CRUD for each entity.
+
+## SERVICES
+ProcessService → start/cancel/query instances using ZeebeClient
+TaskService → manage user tasks
+Entity services with @Transactional
+
+## DTOs
+StartProcessRequest
+CompleteTaskRequest
+ProcessInstanceResponse
+TaskResponse
+Entity request/response DTOs
+
+## EXCEPTION HANDLER
+@ControllerAdvice with:
+404 ResourceNotFoundException
+400 ValidationException
+502 ZeebeClientException
+500 Generic Exception
+
+## PROJECT STRUCTURE
+src/main/java/com/example/{{processname}}/
+ controller/
+ service/
+ repository/
+ model/entity/
+ model/dto/
+ worker/
+ config/
+ exception/
+
+src/main/resources/
+ application.properties
+ schema.sql
+ data.sql
+
+## ADDITIONAL
+Java 17
+Swagger annotations (@Operation)
+@Valid request bodies
+Lombok annotations
+Startup runner printing registered Zeebe workers
+README listing all APIs
+
+CRITICAL RULES — follow these strictly:
+- Every @JobWorker method body must contain real, working code — NO "// TODO", NO empty methods, NO placeholder comments
+- If business logic is unknown, implement a sensible default (e.g., validation worker checks for null/empty fields, notification worker logs the message, calculation worker computes based on variable names)
+- All workers must call either completeCommand or throwErrorCommand — never leave the job hanging
+- Include simple if/else or switch logic where a gateway decision depends on worker output
+
+Generate the final IDE prompt using exact values extracted from the BPMN XML.
+"""
 
 
 # ─────────────────────────────────────────────
@@ -85,25 +174,26 @@ def build_springboot_prompt(xml: str, rag_context: str = "") -> str:
 
 @springboot_bp.route('/generate-springboot-prompt', methods=['POST'])
 def generate_springboot_prompt():
-    data       = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True) or {}
     session_id = data.get('session_id', '')
-    xml        = data.get('xml', '').strip()
+    xml = data.get('xml', '').strip()
 
+    # Fall back to session store if no XML supplied directly
     if not xml and session_id:
         xml = get_xml(session_id) or ''
+
     if not xml:
         return jsonify({"error": "No BPMN XML provided"})
 
+    # ── Agentic RAG: retrieve Spring Boot implementation patterns ─────────────
     rag_context, rag_meta = rag_run(xml, context_type="springboot")
+    # ─────────────────────────────────────────────────────────────────────────
 
-    raw = call_claude(
-        prompt=build_springboot_prompt(xml, rag_context),
-        system=_SB_SYSTEM,
-        max_tokens=6000,
-    )
+    raw = call_claude(build_springboot_prompt_generator(xml, rag_context))
     if not raw:
         return jsonify({"error": "Failed to reach Claude API"})
 
     raw = re.sub(r'^```[a-z]*\s*', '', raw.strip())
-    raw = re.sub(r'\s*```$',       '', raw.strip())
+    raw = re.sub(r'\s*```$', '', raw.strip())
+
     return jsonify({"success": True, "prompt": raw.strip(), "rag": rag_meta})
