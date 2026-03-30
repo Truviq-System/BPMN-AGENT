@@ -11,24 +11,108 @@
     <link rel="stylesheet" href="https://unpkg.com/bpmn-js@14.0.0/dist/assets/bpmn-font/css/bpmn-embedded.css">
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* ── Document Upload ── */
+        .doc-upload-zone { cursor: default; }
+        .doc-upload-prompt {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #64748b;
+            font-size: 0.85rem;
+            flex-wrap: wrap;
+        }
+        .doc-upload-icon { font-size: 1rem; }
+        .doc-browse-btn {
+            background: none;
+            border: 1px solid #a5b4fc;
+            color: #6366f1;
+            cursor: pointer;
+            font-size: 0.82rem;
+            padding: 2px 10px;
+            border-radius: 4px;
+            transition: background 0.15s;
+        }
+        .doc-browse-btn:hover { background: #eef2ff; }
+        .doc-upload-prompt small { color: #94a3b8; font-size: 0.75rem; }
+        .doc-extracting {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #6366f1;
+            font-size: 0.85rem;
+        }
+        .spinner-sm {
+            width: 14px;
+            height: 14px;
+            border: 2px solid #e0e7ff;
+            border-top-color: #6366f1;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .doc-result-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .doc-result-icon { font-size: 1rem; }
+        .doc-result-name { font-weight: 600; color: #1e293b; font-size: 0.85rem; }
+        .doc-result-meta { color: #64748b; font-size: 0.78rem; }
+        .doc-remove-btn {
+            margin-left: auto;
+            background: none;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 0.85rem;
+            padding: 1px 5px;
+            border-radius: 4px;
+            line-height: 1;
+        }
+        .doc-remove-btn:hover { color: #ef4444; background: #fee2e2; }
+        .doc-bpmn-notice {
+            margin-top: 6px;
+            padding: 5px 10px;
+            background: #ecfdf5;
+            border: 1px solid #6ee7b7;
+            border-radius: 5px;
+            color: #065f46;
+            font-size: 0.78rem;
+        }
+        .doc-preview-details {
+            margin-top: 6px;
+            font-size: 0.78rem;
+        }
+        .doc-preview-details summary {
+            cursor: pointer;
+            color: #6366f1;
+            user-select: none;
+        }
+        .doc-preview-text {
+            margin-top: 6px;
+            max-height: 120px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            padding: 8px;
+            color: #334155;
+            font-size: 0.75rem;
+            line-height: 1.45;
+        }
+    </style>
     <!-- Markdown renderer -->
     <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
 </head>
 
 <body>
     <div class="container">
-        <div class="header">
-            <div class="header-content">
-                <div class="header-brand">
-                    <div class="brand-icon">🔄</div>
-                    <div class="brand-text">
-                        <h1>AI-Powered Workflow Designer</h1>
-                        <p>Generate complete BPMN 2.0 diagrams, test cases, and full-stack code from natural language</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <div class="app-layout">
 
             <!-- ── Left Sidebar ── -->
@@ -112,6 +196,39 @@
                                 <label for="app-purpose">Application Purpose:</label>
                                 <input type="text" id="app-purpose" class="text-input"
                                     placeholder="e.g. Automate loan approval workflow, reduce manual review time">
+                            </div>
+                        </div>
+
+                        <!-- Document Upload -->
+                        <div class="input-section" style="margin-top:4px;">
+                            <label style="margin-bottom:6px;">Supporting Document <span style="font-weight:400;color:#888;">(optional)</span></label>
+                            <input type="file" id="doc-file-input" accept=".bpmn,.pdf,.docx,.doc" style="display:none;">
+                            <div id="doc-upload-zone">
+                                <!-- Prompt -->
+                                <div class="doc-upload-prompt" id="doc-upload-prompt">
+                                    <span class="doc-upload-icon">📎</span>
+                                    <button type="button" class="doc-browse-btn" id="doc-browse-btn">Browse file</button>
+                                    <small>· .bpmn to update an existing process &nbsp;|&nbsp; .pdf / .docx for context</small>
+                                </div>
+                                <!-- Extracting spinner -->
+                                <div class="doc-extracting" id="doc-extracting" style="display:none;">
+                                    <span class="spinner-sm"></span>
+                                    <span>Extracting...</span>
+                                </div>
+                                <!-- Result row -->
+                                <div id="doc-result" style="display:none;">
+                                    <div class="doc-result-header">
+                                        <span class="doc-result-icon" id="doc-result-icon">📄</span>
+                                        <span class="doc-result-name" id="doc-result-name"></span>
+                                        <span class="doc-result-meta" id="doc-result-meta"></span>
+                                        <button type="button" class="doc-remove-btn" id="doc-remove-btn" title="Remove">✕</button>
+                                    </div>
+                                    <div class="doc-bpmn-notice" id="doc-bpmn-notice" style="display:none;"></div>
+                                    <details class="doc-preview-details">
+                                        <summary id="doc-preview-summary">Preview</summary>
+                                        <pre class="doc-preview-text" id="doc-preview-text"></pre>
+                                    </details>
+                                </div>
                             </div>
                         </div>
 

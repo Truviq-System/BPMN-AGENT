@@ -18,4 +18,8 @@ pinecone>=3.0.0
 # For Excel export
 openpyxl>=3.1.0
 
+# Document extraction (PDF and Word)
+pdfplumber>=0.10.0
+python-docx>=1.1.0
+
 # flask-cors removed — CORS handled natively via before/after_request hooks

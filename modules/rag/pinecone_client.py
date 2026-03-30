@@ -65,7 +65,7 @@ def upsert_documents(documents: list[dict]) -> int:
                 "pattern_name": doc.get("pattern_name", ""),
                 "domain":       doc.get("domain", "general"),
                 "description":  doc.get("description", ""),
-                "content":      (doc.get("content") or "")[:800],
+                "content":      (doc.get("content") or "")[:400],  # 400 chars is enough; saves retrieval tokens
                 "tags":         ",".join(doc.get("tags") or []),
             },
         })
@@ -80,17 +80,9 @@ def upsert_documents(documents: list[dict]) -> int:
 def query_similar(
     query_text: str,
     doc_type: str,
-    top_k: int = 4,
+    top_k: int = 5,
 ) -> list[dict]:
-    """
-    Return top_k most similar documents filtered by doc_type.
-
-    Parameters
-    ----------
-    query_text : str   — semantic query
-    doc_type   : str   — "bpmn" | "test" | "springboot"
-    top_k      : int   — number of results to return
-    """
+    """Return top_k most similar documents filtered by doc_type."""
     query_vec = embed([query_text], input_type="query")[0]
     idx = _get_index()
 

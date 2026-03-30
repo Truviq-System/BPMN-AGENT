@@ -56,6 +56,120 @@ const diagramViewBtn = document.getElementById('diagram-view-btn');
 const viewTitle = document.getElementById('view-title');
 const syncStatus = document.getElementById('sync-status');
 
+// ─────────────────────────────────────────────
+// DOCUMENT UPLOAD
+// ─────────────────────────────────────────────
+let extractedDocText = '';
+let extractedBpmnXml = '';
+
+const docUploadZone   = document.getElementById('doc-upload-zone');
+const docFileInput    = document.getElementById('doc-file-input');
+const docBrowseBtn    = document.getElementById('doc-browse-btn');
+const docUploadPrompt = document.getElementById('doc-upload-prompt');
+const docExtracting   = document.getElementById('doc-extracting');
+const docResult       = document.getElementById('doc-result');
+const docResultName   = document.getElementById('doc-result-name');
+const docResultMeta   = document.getElementById('doc-result-meta');
+const docResultIcon   = document.getElementById('doc-result-icon');
+const docRemoveBtn      = document.getElementById('doc-remove-btn');
+const docBpmnNotice     = document.getElementById('doc-bpmn-notice');
+const docPreviewText    = document.getElementById('doc-preview-text');
+const docPreviewSummary = document.getElementById('doc-preview-summary');
+
+docBrowseBtn.addEventListener('click', () => docFileInput.click());
+
+docUploadZone.addEventListener('dragover', e => e.preventDefault());
+docUploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleDocumentFile(file);
+});
+
+docFileInput.addEventListener('change', () => {
+    if (docFileInput.files[0]) handleDocumentFile(docFileInput.files[0]);
+});
+
+docRemoveBtn.addEventListener('click', () => {
+    clearDocument();
+});
+
+function clearDocument() {
+    extractedDocText = '';
+    extractedBpmnXml = '';
+    docFileInput.value = '';
+    docUploadPrompt.style.display = 'flex';
+    docExtracting.style.display = 'none';
+    docResult.style.display = 'none';
+    docBpmnNotice.style.display = 'none';
+    docPreviewText.textContent = '';
+}
+
+async function handleDocumentFile(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['bpmn', 'pdf', 'docx', 'doc'].includes(ext)) {
+        showError('Unsupported file type. Please upload a BPMN (.bpmn), PDF (.pdf), or Word (.docx, .doc) file.');
+        return;
+    }
+
+    docUploadPrompt.style.display = 'none';
+    docResult.style.display = 'none';
+    docExtracting.style.display = 'flex';
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const resp = await fetch('/extract-document', { method: 'POST', body: formData });
+        const data = await resp.json();
+
+        if (data.error) {
+            showError(`Document extraction failed: ${data.error}`);
+            docExtracting.style.display = 'none';
+            docUploadPrompt.style.display = 'flex';
+            return;
+        }
+
+        extractedDocText = data.text || '';
+        extractedBpmnXml = data.bpmn_xml || '';
+
+        // Show result UI
+        docExtracting.style.display = 'none';
+        docResult.style.display = 'block';
+
+        const icons = { bpmn: '🔷', pdf: '📕', word: '📘' };
+        docResultIcon.textContent = icons[data.file_type] || '📄';
+        docResultName.textContent = data.filename || file.name;
+
+        const metaParts = [];
+        if (data.pages) metaParts.push(`${data.pages} pages`);
+        if (data.char_count) metaParts.push(`${data.char_count.toLocaleString()} chars`);
+        docResultMeta.textContent = metaParts.join(' · ');
+
+        if (data.has_bpmn) {
+            docBpmnNotice.style.display = 'block';
+            if (data.file_type === 'bpmn') {
+                docBpmnNotice.textContent = '🔷 BPMN diagram loaded — your description will be used to update this existing process.';
+            } else {
+                docBpmnNotice.textContent = '♻️ Existing BPMN process detected inside the document — it will be updated based on your description.';
+            }
+        } else {
+            docBpmnNotice.style.display = 'none';
+        }
+
+        if (docPreviewSummary) {
+            docPreviewSummary.textContent = data.file_type === 'bpmn' ? 'Preview BPMN XML' : 'Preview extracted text';
+        }
+        const previewSource = data.file_type === 'bpmn' ? (data.bpmn_xml || '') : extractedDocText;
+        docPreviewText.textContent = previewSource.slice(0, 1500) + (previewSource.length > 1500 ? '\n...' : '');
+
+    } catch (err) {
+        console.error('Document extraction error:', err);
+        showError('Failed to extract document. Please try again.');
+        docExtracting.style.display = 'none';
+        docUploadPrompt.style.display = 'flex';
+    }
+}
+
 // Initialize BPMN Modeler
 let bpmnModeler = null;
 let currentXML = '';
@@ -338,6 +452,17 @@ generateBtn.addEventListener('click', async () => {
 
     clearMessages();
     loading.classList.add('show');
+    // Update loading message based on document presence
+    const loadingMsg = loading.querySelector('p');
+    if (loadingMsg) {
+        if (extractedBpmnXml) {
+            loadingMsg.textContent = 'Extracting existing BPMN and updating process...';
+        } else if (extractedDocText) {
+            loadingMsg.textContent = 'Analysing document and generating BPMN...';
+        } else {
+            loadingMsg.textContent = 'Generating BPMN XML...';
+        }
+    }
     generateBtn.disabled = true;
     xmlEditor.value = '';
     xmlOutput.style.display = 'none';
@@ -355,6 +480,8 @@ generateBtn.addEventListener('click', async () => {
                 app_name: appName.value.trim(),
                 app_industry: appIndustry.value.trim(),
                 app_purpose: appPurpose.value.trim(),
+                document_context: extractedBpmnXml ? '' : extractedDocText,
+                existing_bpmn_xml: extractedBpmnXml,
             })
         });
 
@@ -414,6 +541,7 @@ clearBtn.addEventListener('click', () => {
     appPurpose.value = '';
     xmlEditor.value = '';
     currentXML = '';
+    clearDocument();
     singleView.style.display = 'none';
     xmlOutput.style.display = 'none';
     diagramContainer.style.display = 'none';
