@@ -131,10 +131,17 @@ def clean_xml_response(xml_content: str) -> str | None:
     xml_content = re.sub(r'```\s*',    '', xml_content)
     xml_content = xml_content.strip()
 
+    # If Claude prefixed the XML with prose, find where the XML actually starts
     if not (xml_content.startswith('<?xml')
             or xml_content.startswith('<bpmn:definitions')
             or xml_content.startswith('<definitions')):
-        return None
+        for marker in ('<?xml', '<bpmn:definitions', '<definitions'):
+            idx = xml_content.find(marker)
+            if idx != -1:
+                xml_content = xml_content[idx:]
+                break
+        else:
+            return None
 
     xml_content = post_process(xml_content)
     return xml_content
@@ -182,9 +189,10 @@ in the generated BPMN.
 {document_context[:6000]}
 """
 
-    return f"""
+    return f"""CRITICAL: Output ONLY the raw XML — no explanations, no markdown, no prose before or after the XML. Start your response with <?xml or <bpmn:definitions immediately.
+If the description is vague or incomplete, make reasonable assumptions and still generate complete, valid XML.
+
 Generate VALID BPMN 2.0 XML that opens correctly in Camunda Modeler and renders in BPMN.js.
-Return ONLY raw XML.
 {app_context}
 PROCESS:
 {description}
@@ -356,7 +364,11 @@ def _generate_bpmn(description: str, app_name: str = "", app_industry: str = "",
 
     xml = clean_xml_response(raw)
     if not xml:
-        return {"error": "Failed to generate valid BPMN XML", "details": raw[:500]}
+        print(f"  ✗ clean_xml_response returned None. Raw start: {raw[:200]!r}")
+        return {
+            "error": "Failed to generate valid BPMN XML",
+            "details": "Claude returned a non-XML response. Try adding more detail to your process description.",
+        }
 
     print(f"✓ Done ({len(xml)} chars)")
     return {"success": True, "xml": xml, "rag": rag_meta}

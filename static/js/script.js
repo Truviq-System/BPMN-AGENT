@@ -240,10 +240,12 @@ async function importXMLToDiagram(xml) {
             errorMessage += ' The XML may be missing required BPMN elements like startEvent, tasks, or endEvent.';
         } else if (err.message && err.message.includes('unresolved reference')) {
             errorMessage += ' There are unresolved references in BPMN elements.';
-        } else if (err.message && err.message.includes('missing')) {
-            errorMessage += ' Required BPMN elements are missing from the XML.';
+        } else if (err.message && (err.message.includes('missing') || err.message.includes('tag'))) {
+            errorMessage += ' The XML structure appears incomplete. Try regenerating with a more detailed description.';
         } else if (err.message && err.message.includes('Cannot read properties')) {
             errorMessage += ' BPMN modeler initialization issue. Please try again.';
+        } else if (err.message && err.message.includes('parse')) {
+            errorMessage += ' XML parsing failed. Try regenerating with a more detailed description.';
         }
 
         showError(errorMessage);
